@@ -60,6 +60,8 @@ static bt815_status_t draw_screen(bt815_t *d, uint32_t seconds)
   return bt815_frame_end(d);
 }
 
+bt815_t *lcd_bringup_device(void) { return &lcd; }
+
 bt815_status_t lcd_bringup_start(const bt815_hal_t *hal)
 {
   memset((void *)&lcd_selftest, 0, sizeof lcd_selftest);

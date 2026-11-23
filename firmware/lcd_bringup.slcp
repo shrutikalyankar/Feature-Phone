@@ -1,7 +1,7 @@
 # LCD bring-up recipe (separate from series2_starter.slcp). Not yet generated/built.
 project_name: lcd_bringup
 label: Feature Phone LCD bring-up (BT815)
-description: Boots a BT815 over EUSART1 SPI and draws a test screen.
+description: Boots a BT815 over EUSART1 SPI, then runs the soft-key phone UI from the TCA8418 keypad.
 category: Example|Teaching
 package: platform
 quality: experimental
@@ -14,6 +14,12 @@ source:
   - path: src/lcd_bringup.c
   - path: src/bt815.c
   - path: src/bt815_hal_efr32.c
+  - path: src/keys.c
+  - path: src/keypad_tca8418.c
+  - path: src/keypad_hal_efr32.c
+  - path: src/ui.c
+  - path: src/ui_render.c
+  - path: src/ui_app.c
 include:
   - path: include
     file_list:
@@ -22,6 +28,12 @@ include:
       - path: bt815_hal_efr32.h
       - path: lcd_bringup.h
       - path: lcd_config.h
+      - path: keys.h
+      - path: keypad_tca8418.h
+      - path: keypad_hal_efr32.h
+      - path: ui.h
+      - path: ui_render.h
+      - path: ui_app.h
 component:
   - id: brd4186c
   - id: brd4002a
@@ -32,6 +44,7 @@ component:
   - id: sleeptimer
   - id: emlib_eusart
   - id: emlib_gpio
+  - id: emlib_i2c
 configuration:
   - name: SL_POWER_MANAGER_DEBUG
     value: 0

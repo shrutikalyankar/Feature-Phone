@@ -22,6 +22,15 @@
 #define LCD_SD_CS_PORT     gpioPortC   /* SD_NAND_CS = PC08: same SPI bus, must idle high */
 #define LCD_SD_CS_PIN      8
 #endif
+/* Keypad scanner (TCA8418) on I2C0, and its interrupt line. */
+#ifndef KEYPAD_SDA_PORT
+#define KEYPAD_SDA_PORT    gpioPortB   /* MCU_I2C0_SDA = PB00 (2.2k pull-up R22) */
+#define KEYPAD_SDA_PIN     0
+#define KEYPAD_SCL_PORT    gpioPortB   /* MCU_I2C0_SCL = PB01 (2.2k pull-up R23) */
+#define KEYPAD_SCL_PIN     1
+#define KEYPAD_INT_PORT    gpioPortA   /* KEY_INT_n = PA04, active low, 100k pull-up */
+#define KEYPAD_INT_PIN     4
+#endif
 #define LCD_EUSART_INDEX   1           /* EUSART1 is EM1-only; fine while the LCD is active */
 
 /* Start slow (BT815 boots on its 12 MHz clock), bt815_init() raises it afterwards. */

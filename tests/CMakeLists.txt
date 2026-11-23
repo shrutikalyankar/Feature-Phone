@@ -30,3 +30,12 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
   target_compile_options(bt815_test PRIVATE -Wall -Wextra -Werror -UNDEBUG)
 endif()
 add_test(NAME bt815_driver COMMAND bt815_test)
+
+# Key matrix, TCA8418 driver and UI navigation (pure logic, no SDK).
+add_executable(ui_test test_ui.c ../firmware/src/keys.c ../firmware/src/keypad_tca8418.c ../firmware/src/ui.c)
+target_include_directories(ui_test PRIVATE ../firmware/include)
+target_compile_features(ui_test PRIVATE c_std_11)
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+  target_compile_options(ui_test PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+endif()
+add_test(NAME ui_logic COMMAND ui_test)

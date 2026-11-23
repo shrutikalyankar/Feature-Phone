@@ -17,6 +17,8 @@ extern volatile lcd_selftest_t lcd_selftest;  /* inspect in the debugger / live 
 
 /* Boot BT815, run the self-test, draw the test screen, fade the backlight up. */
 bt815_status_t lcd_bringup_start(const bt815_hal_t *hal);
+/* The BT815 instance used by the bring-up code (valid after lcd_bringup_start succeeds). */
+bt815_t *lcd_bringup_device(void);
 /* Call about once a second: redraws the screen with an uptime counter. */
 bt815_status_t lcd_bringup_tick(uint32_t seconds);
 

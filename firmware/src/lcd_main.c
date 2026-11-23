@@ -1,22 +1,27 @@
 /* SPDX-License-Identifier: MIT */
-/* Stand-alone LCD bring-up image: boots BT815, draws a test screen, updates a
- * counter once per second. Use with lcd_bringup.slcp (separate from the energy demo). */
+/* Stand-alone phone UI image: boots the BT815, shows the self-test screen for a second,
+ * then runs the soft-key UI driven by the TCA8418 keypad. Use with lcd_bringup.slcp. */
 #include "sl_system_init.h"
 #include "sl_system_process_action.h"
 #include "sl_power_manager.h"
 #include "sl_sleeptimer.h"
 #include "bt815_hal_efr32.h"
+#include "keypad_hal_efr32.h"
 #include "lcd_bringup.h"
+#include "ui_app.h"
 
-static sl_sleeptimer_timer_handle_t sec_timer;
-static volatile bool sec_flag;
-static void on_sec(sl_sleeptimer_timer_handle_t *t, void *d) { (void)t; (void)d; sec_flag = true; }
+#define POLL_MS 20u
+static sl_sleeptimer_timer_handle_t poll_timer;
+static volatile bool poll_flag;
+static void on_poll(sl_sleeptimer_timer_handle_t *t, void *d) { (void)t; (void)d; poll_flag = true; }
 
-bool app_is_ok_to_sleep(void) { return !sec_flag; }
+bool app_is_ok_to_sleep(void) { return !poll_flag; }
 sl_power_manager_on_isr_exit_t app_sleep_on_isr_exit(void)
 {
-  return sec_flag ? SL_POWER_MANAGER_WAKEUP : SL_POWER_MANAGER_IGNORE;
+  return poll_flag ? SL_POWER_MANAGER_WAKEUP : SL_POWER_MANAGER_IGNORE;
 }
+
+volatile int app_stage;   /* debugger: 1 hal ok, 2 lcd ok, 3 keypad ok, 4 running */
 
 int main(void)
 {
@@ -25,17 +30,30 @@ int main(void)
   sl_power_manager_add_em_requirement(SL_POWER_MANAGER_EM1);
 
   static bt815_hal_t hal;
-  bool ok = bt815_hal_efr32_init(&hal) && lcd_bringup_start(&hal) == BT815_OK;
-  uint32_t seconds = 0;
+  static keypad_io_t keys;
+  bool ok = bt815_hal_efr32_init(&hal);
+  app_stage = ok ? 1 : 0;
+  ok = ok && lcd_bringup_start(&hal) == BT815_OK;       /* self-test + test screen + backlight */
+  if (ok) { app_stage = 2; }
   if (ok) {
-    sl_sleeptimer_start_periodic_timer_ms(&sec_timer, 1000, on_sec, NULL, 0, 0);
+    sl_sleeptimer_delay_millisecond(1000);              /* leave the test screen visible briefly */
+    ok = keypad_hal_efr32_init(&keys) && keypad_init(&keys);
+  }
+  if (ok) {
+    app_stage = 3;
+    ok = ui_app_start(lcd_bringup_device(), &keys) == BT815_OK;
+  }
+  if (ok) {
+    app_stage = 4;
+    sl_sleeptimer_start_periodic_timer_ms(&poll_timer, POLL_MS, on_poll, NULL, 0, 0);
   }
   for (;;) {
     sl_system_process_action();
-    if (ok && sec_flag) {
-      sec_flag = false;
-      lcd_bringup_tick(++seconds);
+    if (ok && poll_flag) {
+      poll_flag = false;
+      uint32_t now = sl_sleeptimer_tick_to_ms(sl_sleeptimer_get_tick_count());
+      ui_app_poll(now, keypad_hal_efr32_int_asserted());
     }
-    sl_power_manager_sleep();   /* on failure: halt here, read lcd_selftest in the debugger */
+    sl_power_manager_sleep();   /* on failure: halt here; read app_stage and lcd_selftest in the debugger */
   }
 }

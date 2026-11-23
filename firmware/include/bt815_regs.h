@@ -70,12 +70,18 @@
 #define BT815_DL_CLEAR(c,s,t)           ((38ul<<24)|((unsigned long)(c)<<2)|((unsigned long)(s)<<1)|(unsigned long)(t))
 #define BT815_DL_VERTEX_FORMAT(frac)    ((39ul<<24)|(unsigned long)(frac))
 #define BT815_DL_VERTEX2F(x,y)          ((1ul<<30)|(((unsigned long)(x)&0x7FFFul)<<15)|((unsigned long)(y)&0x7FFFul))
+#define BT815_DL_POINT_SIZE(s)          ((13ul<<24)|((unsigned long)(s)&0x1FFFul))   /* radius, 1/16 px */
+#define BT815_DL_LINE_WIDTH(w)          ((14ul<<24)|((unsigned long)(w)&0xFFFul))    /* 1/16 px */
+#define BT815_PRIM_POINTS               2u
+#define BT815_PRIM_LINES                3u
+#define BT815_PRIM_LINE_STRIP           4u
 #define BT815_PRIM_RECTS                9u
 
 /* Coprocessor commands */
 #define BT815_CMD_DLSTART  0xFFFFFF00ul
 #define BT815_CMD_SWAP     0xFFFFFF01ul
 #define BT815_CMD_TEXT     0xFFFFFF0Cul
+#define BT815_OPT_CENTERY  0x0400u
 #define BT815_OPT_CENTER   0x0600u  /* OPT_CENTERX | OPT_CENTERY */
 
 #endif
