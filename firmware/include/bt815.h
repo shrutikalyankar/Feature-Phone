@@ -38,7 +38,8 @@ typedef struct {
 typedef struct {
   uint16_t hsize, hcycle, hoffset, hsync0, hsync1;
   uint16_t vsize, vcycle, voffset, vsync0, vsync1;
-  uint8_t pclk_div;     /* PCLK = 60 MHz / pclk_div */
+  uint8_t sys_mult;     /* system clock = 12 MHz x sys_mult (2..6); 0 = chip default, 60 MHz */
+  uint8_t pclk_div;     /* PCLK = system clock / pclk_div */
   uint8_t pclk_pol;     /* 0: data changes on rising edge */
   uint8_t swizzle;      /* RGB pin order, 0 = R/G/B straight through */
   uint8_t cspread;
@@ -68,6 +69,9 @@ void bt815_wr32(bt815_t *d, uint32_t addr, uint32_t v);
 
 /* Boot the chip on the external 12 MHz crystal, program the panel, enable DISP.
  * Backlight stays off (duty 0) until bt815_set_backlight(). */
+/* Panel power-off order from the panel datasheet: backlight off, >= 1 ms, DISP low,
+ * then keep the clock running >= 100 ms for the panel's internal discharge. */
+void bt815_shutdown(bt815_t *d);
 bt815_status_t bt815_init(bt815_t *d, const bt815_hal_t *hal, const bt815_panel_t *panel);
 
 /* 0..128 (128 = 100 %), PWM at BT815_BACKLIGHT_HZ. */

@@ -21,7 +21,7 @@ typedef struct {
   bool cs; unsigned nbytes; uint8_t hdr[4]; bool is_write, is_read, is_host; uint32_t addr;
   /* logs */
   wlog_t wlog[LOG_MAX]; unsigned nw;
-  uint8_t host_log[16]; unsigned nhost; unsigned clkext_idx, active_idx;
+  uint8_t host_log[16], host_param[16]; unsigned nhost; unsigned clkext_idx, active_idx;
   uint8_t cmd_log[8192]; unsigned ncmd;
   uint32_t spi_hz;
   bool pd_level; uint32_t pd_fell_at, pd_low_ms; unsigned pd_events; unsigned host_at_pd_rise;
@@ -48,9 +48,9 @@ static void fake_cs(void *c, bool a)
   fake_t *f = c;
   if (!a && f->cs && f->present) {
     /* CS released: classify the finished transaction. */
-    if (f->nbytes == 3 && f->hdr[1] == 0 && f->hdr[2] == 0 && (f->hdr[0] == 0x00 || (f->hdr[0] & 0xC0) == 0x40)) {
+    if (f->nbytes == 3 && f->hdr[2] == 0 && ((f->hdr[0] == 0x00 && f->hdr[1] == 0) || (f->hdr[0] & 0xC0) == 0x40)) {
       uint8_t cmd = f->hdr[0];
-      f->host_log[f->nhost] = cmd;
+      f->host_log[f->nhost] = cmd; f->host_param[f->nhost] = f->hdr[1];
       if (cmd == BT815_HC_CLKEXT) { f->clkext = true; f->clkext_idx = f->nhost; }
       if (cmd == BT815_HC_ACTIVE) { f->active = true; f->active_idx = f->nhost; f->active_at = f->now_ms; }
       ++f->nhost;
@@ -168,11 +168,15 @@ static void test_init_sequence(void)
   bt815_t d;
   assert(bt815_init(&d, &hal, &LCD_PANEL) == BT815_OK);
   /* Crystal selected before the chip is woken. */
-  assert(F.nhost == 2 && F.host_log[0] == BT815_HC_CLKEXT && F.host_log[1] == BT815_HC_ACTIVE);
+  /* CLKEXT, then CLKSEL (x4 = 48 MHz: 0x44), then ACTIVE: CLKSEL only works with the PLL stopped. */
+  assert(F.nhost == 3 && F.host_log[0] == BT815_HC_CLKEXT && F.host_log[1] == BT815_HC_CLKSEL
+         && F.host_param[1] == 0x44 && F.host_log[2] == BT815_HC_ACTIVE);
   assert(F.clkext_idx < F.active_idx);
+  assert(find_w(BT815_REG_FREQUENCY, 0)->val == 48000000u);
   /* Panel registers programmed. */
-  assert(find_w(BT815_REG_HSIZE, 0)->val == 480 && find_w(BT815_REG_VSIZE, 0)->val == 272);
-  assert(find_w(BT815_REG_HCYCLE, 0)->val == 548 && find_w(BT815_REG_VCYCLE, 0)->val == 292);
+  assert(find_w(BT815_REG_HSIZE, 0)->val == 800 && find_w(BT815_REG_VSIZE, 0)->val == 480);
+  assert(find_w(BT815_REG_HCYCLE, 0)->val == 816 && find_w(BT815_REG_VCYCLE, 0)->val == 512);
+  assert(find_w(BT815_REG_PCLK_POL, 0)->val == 1);
   /* Backlight at 5 kHz and starts dark. */
   assert(find_w(BT815_REG_PWM_HZ, 0)->val == BT815_BACKLIGHT_HZ);
   assert(find_w(BT815_REG_PWM_DUTY, 0)->val == 0);
@@ -189,6 +193,43 @@ static void test_init_sequence(void)
   assert(F.mem[BT815_RAM_DL + 8] == 0 && F.mem[BT815_RAM_DL + 11] == 0);
   assert(F.mem[BT815_REG_DLSWAP] == BT815_DLSWAP_FRAME);
   assert(F.spi_hz == 10000000u);
+}
+
+/* Check LCD_PANEL against the DLC-T5.0AHR#2 datasheet limits (p.10 timing table). */
+static void test_panel_meets_datasheet(void)
+{
+  const bt815_panel_t *p = &LCD_PANEL;
+  double sysclk = p->sys_mult ? 12.0 * p->sys_mult : 60.0;
+  double dclk = sysclk / p->pclk_div;
+  assert(dclk >= 23.0 && dclk <= 27.0);
+  assert(p->hsize == 800 && p->vsize == 480);
+  assert(p->hcycle >= 808 && p->hcycle <= 848);
+  assert(p->vcycle >= 496 && p->vcycle <= 528);
+  unsigned hw = p->hsync1 - p->hsync0, vw = p->vsync1 - p->vsync0;
+  assert(hw >= 2 && hw <= 8 && vw >= 2 && vw <= 8);
+  unsigned hbp = p->hoffset, vbp = p->voffset;           /* back porch counted from pulse start */
+  unsigned hfp = p->hcycle - p->hsize - hbp, vfp = p->vcycle - p->vsize - vbp;
+  assert(hbp >= 4 && hbp <= 24 && hfp >= 4 && hfp <= 24);
+  assert(vbp >= 8 && vbp <= 24 && vfp >= 8 && vfp <= 24);
+  assert(hbp == 8 && vbp == 16);                         /* required in SYNC mode */
+  assert(hbp > hw && vbp > vw);                          /* pulse fits inside the back porch */
+  double hz = dclk * 1e6 / ((double)p->hcycle * p->vcycle);
+  assert(hz > 55.0 && hz < 62.0);
+}
+
+static void test_shutdown_order(void)
+{
+  reset_fake(true);
+  bt815_t d;
+  assert(bt815_init(&d, &hal, &LCD_PANEL) == BT815_OK);
+  bt815_set_backlight(&d, 100);
+  unsigned n0 = F.nw; uint32_t t0 = F.now_ms;
+  bt815_shutdown(&d);
+  assert(F.mem[BT815_REG_PWM_DUTY] == 0);
+  assert(!(F.mem[BT815_REG_GPIOX + 1] & 0x80));          /* DISP low */
+  assert(F.mem[BT815_REG_PCLK] == 0);
+  assert(F.now_ms - t0 >= 100u);                         /* panel discharge time */
+  assert(F.wlog[n0].addr == BT815_REG_PWM_DUTY);         /* backlight goes first */
 }
 
 static void test_hardware_reset(void)
@@ -227,6 +268,8 @@ static void test_bad_args(void)
 {
   reset_fake(true);
   bt815_t d; bt815_panel_t p = LCD_PANEL; p.pclk_div = 0;
+  assert(bt815_init(&d, &hal, &p) == BT815_ERR_ARG);
+  p = LCD_PANEL; p.sys_mult = 7;
   assert(bt815_init(&d, &hal, &p) == BT815_ERR_ARG);
   assert(bt815_init(NULL, &hal, &LCD_PANEL) == BT815_ERR_ARG);
 }
@@ -327,7 +370,7 @@ static void test_bringup_app(void)
 
 int main(void)
 {
-  test_init_sequence(); test_hardware_reset(); test_no_chip(); test_wrong_chip(); test_bad_args();
+  test_panel_meets_datasheet(); test_shutdown_order(); test_init_sequence(); test_hardware_reset(); test_no_chip(); test_wrong_chip(); test_bad_args();
   test_rw_roundtrip(); test_frame_and_text(); test_flow_control_and_chunking();
   test_fault(); test_backlight_clamp(); test_bringup_app();
   puts("bt815 host tests passed");

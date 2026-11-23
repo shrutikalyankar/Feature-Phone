@@ -87,7 +87,7 @@ static void program_panel(bt815_t *d, const bt815_panel_t *p)
 bt815_status_t bt815_init(bt815_t *d, const bt815_hal_t *hal, const bt815_panel_t *panel)
 {
   if (!d || !hal || !panel || !hal->cs || !hal->xfer || !hal->delay_ms || !hal->millis
-      || panel->pclk_div == 0u || panel->hsize == 0u || panel->vsize == 0u) {
+      || panel->pclk_div == 0u || panel->sys_mult == 1u || panel->sys_mult > 6u || panel->hsize == 0u || panel->vsize == 0u) {
     return BT815_ERR_ARG;
   }
   memset(d, 0, sizeof *d);
@@ -107,8 +107,16 @@ bt815_status_t bt815_init(bt815_t *d, const bt815_hal_t *hal, const bt815_panel_
     d->hal.delay_ms(d->hal.ctx, 25u);
   }
 
-  /* External 12 MHz crystal (Y on the Display_Driver sheet), then wake. 60 MHz sysclk. */
+  /* External 12 MHz crystal (Y2 on the Display_Driver sheet). CLKSEL is only accepted
+   * while the PLL is stopped, so it goes between CLKEXT and ACTIVE. Byte 2: bits 5:0 =
+   * multiplier, bits 7:6 = PLL range (1 for x4..x6). */
   bt815_host_cmd(d, BT815_HC_CLKEXT, 0x00);
+  uint32_t sysclk = 60000000ul;
+  if (panel->sys_mult != 0u) {
+    uint8_t range = panel->sys_mult >= 4u ? 0x40u : 0x00u;
+    bt815_host_cmd(d, BT815_HC_CLKSEL, (uint8_t)(range | panel->sys_mult));
+    sysclk = 12000000ul * panel->sys_mult;
+  }
   bt815_host_cmd(d, BT815_HC_ACTIVE, 0x00);
 
   /* Boot can take up to 300 ms (datasheet 4.9.4): poll REG_ID. */
@@ -133,7 +141,7 @@ bt815_status_t bt815_init(bt815_t *d, const bt815_hal_t *hal, const bt815_panel_
     return BT815_ERR_CHIPID;
   }
 
-  bt815_wr32(d, BT815_REG_FREQUENCY, 60000000ul);
+  bt815_wr32(d, BT815_REG_FREQUENCY, sysclk);   /* must match the selected clock */
   bt815_wr8(d, BT815_REG_PWM_DUTY, 0);              /* backlight off until first frame */
   bt815_wr16(d, BT815_REG_PWM_HZ, BT815_BACKLIGHT_HZ);
   program_panel(d, panel);
@@ -159,6 +167,15 @@ bt815_status_t bt815_init(bt815_t *d, const bt815_hal_t *hal, const bt815_panel_
     d->hal.set_spi_hz(d->hal.ctx, 10000000u);
   }
   return BT815_OK;
+}
+
+void bt815_shutdown(bt815_t *d)
+{
+  bt815_wr8(d, BT815_REG_PWM_DUTY, 0);
+  d->hal.delay_ms(d->hal.ctx, 2u);
+  bt815_wr16(d, BT815_REG_GPIOX, (uint16_t)(bt815_rd16(d, BT815_REG_GPIOX) & ~BT815_GPIOX_DISP));
+  d->hal.delay_ms(d->hal.ctx, 100u);
+  bt815_wr8(d, BT815_REG_PCLK, 0);
 }
 
 void bt815_set_backlight(bt815_t *d, uint8_t duty)

@@ -74,6 +74,8 @@ bt815_status_t lcd_bringup_start(const bt815_hal_t *hal)
   if (st != BT815_OK) {
     return st;
   }
+  /* Panel datasheet power-on order: signal first, backlight >= 100 ms later. */
+  hal->delay_ms(hal->ctx, LCD_BACKLIGHT_DELAY_MS);
   /* Fade the backlight up after the first real frame so there is no white flash. */
   for (uint8_t duty = 0; duty <= 96u; duty = (uint8_t)(duty + 8u)) {
     bt815_set_backlight(&lcd, duty);
