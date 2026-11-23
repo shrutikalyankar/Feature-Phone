@@ -1,0 +1,37 @@
+# LCD bring-up recipe (separate from series2_starter.slcp). Not yet generated/built.
+project_name: lcd_bringup
+label: Feature Phone LCD bring-up (BT815)
+description: Boots a BT815 over EUSART1 SPI and draws a test screen.
+category: Example|Teaching
+package: platform
+quality: experimental
+sdk:
+  vendor: silabs
+  id: simplicity_sdk
+  version: 2026.6.1
+source:
+  - path: src/lcd_main.c
+  - path: src/lcd_bringup.c
+  - path: src/bt815.c
+  - path: src/bt815_hal_efr32.c
+include:
+  - path: include
+    file_list:
+      - path: bt815.h
+      - path: bt815_regs.h
+      - path: bt815_hal_efr32.h
+      - path: lcd_bringup.h
+      - path: lcd_config.h
+component:
+  - id: brd4186c
+  - id: brd4002a
+  - id: sl_system
+  - id: device_init
+  - id: clock_manager
+  - id: power_manager
+  - id: sleeptimer
+  - id: emlib_eusart
+  - id: emlib_gpio
+configuration:
+  - name: SL_POWER_MANAGER_DEBUG
+    value: 0

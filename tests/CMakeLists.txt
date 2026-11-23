@@ -20,3 +20,13 @@ foreach(mode RANGE 0 3)
 endforeach()
 # Only demo mode starts the separate LED animation timer.
 add_test(NAME mode_3_breath_failure COMMAND app_test_3 breath_failure)
+
+# BT815 driver and LCD bring-up logic against a simulated chip (no SDK needed).
+add_executable(bt815_test test_bt815.c ../firmware/src/bt815.c ../firmware/src/lcd_bringup.c)
+target_include_directories(bt815_test PRIVATE ../firmware/include)
+target_compile_definitions(bt815_test PRIVATE _GNU_SOURCE)
+target_compile_features(bt815_test PRIVATE c_std_11)
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+  target_compile_options(bt815_test PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+endif()
+add_test(NAME bt815_driver COMMAND bt815_test)
